@@ -576,26 +576,6 @@ function listenOnce() {
 
   
 
-    sendMessage();
-  };
-
-  recognition.onerror = function(event) {
-    document.getElementById("status").textContent =
-      "음성 인식 오류: " + event.error;
-  };
-
-  recognition.onend = function() {
-    if (
-      document.getElementById("status").textContent
-      === "LISTENING..."
-    ) {
-      document.getElementById("status").textContent =
-        "SYSTEM ONLINE";
-    }
-  };
-
-  recognition.start();
-}
 
 </script>
 </body>
