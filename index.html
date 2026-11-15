@@ -286,6 +286,10 @@ function respond(message) {
 }
 
 function speak(text) {
+  
+console.log("Speech synthesis:", "speechSynthesis" in window);
+console.log("Available voices:", window.speechSynthesis.getVoices().length);
+
   if (!("speechSynthesis" in window)) {
     isAIResponding = false;
     document.getElementById("status").textContent =
