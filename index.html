@@ -371,6 +371,54 @@ document.getElementById("userInput")
     }
   });
 
+function startListening() {
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    document.getElementById("status").textContent =
+      "음성 인식을 지원하지 않는 브라우저입니다.";
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "ko-KR";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  document.getElementById("status").textContent =
+    "LISTENING...";
+
+  recognition.onresult = function(event) {
+    const message =
+      event.results[0][0].transcript;
+
+    document.getElementById("userInput").value =
+      message;
+
+    sendMessage();
+  };
+
+  recognition.onerror = function(event) {
+    document.getElementById("status").textContent =
+      "음성 인식 오류: " + event.error;
+  };
+
+  recognition.onend = function() {
+    if (
+      document.getElementById("status").textContent
+      === "LISTENING..."
+    ) {
+      document.getElementById("status").textContent =
+        "SYSTEM ONLINE";
+    }
+  };
+
+  recognition.start();
+}
+
 </script>
 </body>
 </html>
