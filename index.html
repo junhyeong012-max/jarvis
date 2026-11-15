@@ -345,26 +345,35 @@ async function sendMessage() {
   const input = document.getElementById("userInput");
   const message = input.value.trim();
 
-  if (!message) return;
+  if (!message) {
+    isAIResponding = false;
+    if (continuousMode) setTimeout(listenOnce, 500);
+    return;
+  }
 
-  // AI 모드 전환 명령
   const command = message.toLowerCase();
 
   if (command.includes("자비스 모드")) {
     setAI("JARVIS");
     input.value = "";
+    isAIResponding = false;
+    if (continuousMode) setTimeout(listenOnce, 500);
     return;
   }
 
   if (command.includes("울트론 모드")) {
     setAI("ULTRON");
     input.value = "";
+    isAIResponding = false;
+    if (continuousMode) setTimeout(listenOnce, 500);
     return;
   }
 
   if (command.includes("프라이데이 모드")) {
     setAI("FRIDAY");
     input.value = "";
+    isAIResponding = false;
+    if (continuousMode) setTimeout(listenOnce, 500);
     return;
   }
 
@@ -373,7 +382,9 @@ async function sendMessage() {
   const answerBox = document.getElementById("answer");
   const status = document.getElementById("status");
 
-  answerBox.textContent = "생각 중...";
+  isAIResponding = true;
+
+  answerBox.textContent = "THINKING...";
   status.textContent = "AI THINKING...";
 
   try {
@@ -395,26 +406,33 @@ async function sendMessage() {
 
     if (!response.ok) {
       throw new Error(
-        data.error?.message || data.error || "AI 연결 실패"
+        data.error?.message || data.error || "AI connection failed"
       );
     }
 
     const answer = data.choices[0].message.content;
 
     answerBox.textContent = answer;
-    status.textContent = "SYSTEM ONLINE";
 
     if (typeof speak === "function") {
       speak(answer);
+    } else {
+      isAIResponding = false;
+      status.textContent = "SYSTEM ONLINE";
+      if (continuousMode) setTimeout(listenOnce, 500);
     }
 
   } catch (error) {
-    answerBox.textContent = "AI 연결 오류: " + error.message;
+    answerBox.textContent = "AI ERROR: " + error.message;
     status.textContent = "CONNECTION ERROR";
+
+    isAIResponding = false;
+
+    if (continuousMode) {
+      setTimeout(listenOnce, 1000);
+    }
   }
 }
-
-
 // 음성 파일 선택 화면 만들기
 function createVoiceSettings() {
   const area = document.getElementById("voiceSettings");
@@ -556,21 +574,7 @@ function listenOnce() {
   }
 }
 
-  const recognition = new SpeechRecognition();
-
-  recognition.lang = "en-US";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-
-  document.getElementById("status").textContent =
-    "LISTENING...";
-
-  recognition.onresult = function(event) {
-    const message =
-      event.results[0][0].transcript;
-
-    document.getElementById("userInput").value =
-      message;
+  
 
     sendMessage();
   };
