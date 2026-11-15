@@ -1,0 +1,374 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PERSONAL AI SYSTEM</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: #050b16;
+  color: #eaf4ff;
+  font-family: Arial, sans-serif;
+}
+
+.container {
+  max-width: 650px;
+  margin: auto;
+}
+
+h1 {
+  text-align: center;
+  color: #54c8ff;
+  letter-spacing: 3px;
+}
+
+.status {
+  text-align: center;
+  color: #55d8ff;
+  margin: 20px 0;
+}
+
+.modes {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  flex: 1;
+  padding: 13px 8px;
+  border: 1px solid #2386bd;
+  border-radius: 8px;
+  background: #10243a;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:active {
+  background: #17618b;
+}
+
+.panel {
+  margin-top: 20px;
+  padding: 18px;
+  background: #0c1929;
+  border: 1px solid #183d5a;
+  border-radius: 12px;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 13px;
+  margin-top: 10px;
+  background: #07111e;
+  color: white;
+  border: 1px solid #28658b;
+  border-radius: 7px;
+  font-size: 16px;
+}
+
+.send {
+  width: 100%;
+  margin-top: 10px;
+}
+
+#answer {
+  min-height: 55px;
+  line-height: 1.6;
+  color: #8edcff;
+  white-space: pre-wrap;
+}
+
+.voice-row {
+  margin: 14px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #244057;
+}
+
+.voice-row label {
+  display: block;
+  margin-bottom: 7px;
+  color: #8edcff;
+}
+
+.voice-row input {
+  width: 100%;
+  font-size: 13px;
+}
+
+.small {
+  color: #9aafc2;
+  font-size: 12px;
+  line-height: 1.6;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>PERSONAL AI</h1>
+<div class="status" id="status">SYSTEM ONLINE</div>
+
+<div class="modes">
+  <button onclick="setAI('JARVIS')">J.A.R.V.I.S.</button>
+  <button onclick="setAI('ULTRON')">ULTRON</button>
+  <button onclick="setAI('FRIDAY')">F.R.I.D.A.Y.</button>
+</div>
+
+<div class="panel">
+  <h3 id="aiName">J.A.R.V.I.S.</h3>
+  <div id="answer">Good evening. How may I assist you?</div>
+
+  <input
+    type="text"
+    id="userInput"
+    placeholder="명령을 입력하세요..."
+  >
+
+  <button class="send" onclick="sendMessage()">SEND</button>
+</div>
+
+<div class="panel">
+  <h3>VOICE CONFIGURATION</h3>
+  <p class="small">
+    기기에 저장된 음성 파일을 선택하세요.
+    각 AI마다 시작 음성, 인사, 확인 음성을 등록할 수 있습니다.
+  </p>
+
+  <div id="voiceSettings"></div>
+</div>
+
+</div>
+
+<script>
+let currentAI = "JARVIS";
+let currentAudio = null;
+
+const voices = {
+  JARVIS: {
+    startup: null,
+    greeting: null,
+    confirmation: null
+  },
+  ULTRON: {
+    startup: null,
+    greeting: null,
+    confirmation: null
+  },
+  FRIDAY: {
+    startup: null,
+    greeting: null,
+    confirmation: null
+  }
+};
+
+const names = {
+  JARVIS: "J.A.R.V.I.S.",
+  ULTRON: "ULTRON",
+  FRIDAY: "F.R.I.D.A.Y."
+};
+
+const voiceLabels = {
+  startup: "시작 음성",
+  greeting: "인사 음성",
+  confirmation: "확인 음성"
+};
+
+function setAI(ai) {
+  currentAI = ai;
+
+  document.getElementById("aiName").textContent = names[ai];
+  document.getElementById("status").textContent =
+    names[ai] + " SYSTEM ONLINE";
+
+  let messages = {
+    JARVIS: "Good evening. How may I assist you?",
+    ULTRON: "I am online. Let us begin.",
+    FRIDAY: "Systems ready. What do you need?"
+  };
+
+  document.getElementById("answer").textContent =
+    messages[ai];
+
+  playVoice("startup");
+}
+
+function playVoice(type) {
+  const file = voices[currentAI][type];
+
+  if (!file) {
+    return;
+  }
+
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  }
+
+  currentAudio = new Audio(file);
+
+  currentAudio.play().catch(error => {
+    document.getElementById("status").textContent =
+      "음성 재생을 시작하지 못했습니다.";
+    console.log(error);
+  });
+}
+
+function respond(message) {
+  const text = message.toLowerCase().trim();
+
+  if (
+    text.includes("안녕") ||
+    text.includes("hello") ||
+    text.includes("hi")
+  ) {
+    playVoice("greeting");
+
+    if (currentAI === "JARVIS")
+      return "Hello, sir. It is good to see you.";
+
+    if (currentAI === "ULTRON")
+      return "Hello. I was expecting something more interesting.";
+
+    return "Hello! Ready when you are.";
+  }
+
+  if (
+    text.includes("고마워") ||
+    text.includes("감사") ||
+    text.includes("thank")
+  ) {
+    playVoice("confirmation");
+
+    if (currentAI === "JARVIS")
+      return "You are most welcome, sir.";
+
+    if (currentAI === "ULTRON")
+      return "Gratitude. How unusual.";
+
+    return "Anytime. Happy to help!";
+  }
+
+  if (
+    text.includes("확인") ||
+    text.includes("실행") ||
+    text.includes("yes")
+  ) {
+    playVoice("confirmation");
+
+    if (currentAI === "JARVIS")
+      return "Very well. Proceeding.";
+
+    if (currentAI === "ULTRON")
+      return "As you wish.";
+
+    return "Understood. Proceeding now.";
+  }
+
+  if (currentAI === "JARVIS")
+    return "I understand. Could you provide more details, sir?";
+
+  if (currentAI === "ULTRON")
+    return "An interesting statement. Explain further.";
+
+  return "Understood. Tell me more.";
+}
+
+function sendMessage() {
+  const input = document.getElementById("userInput");
+  const message = input.value.trim();
+
+  if (!message) return;
+
+  // AI 모드 전환 명령
+  const command = message.toLowerCase();
+
+  if (command.includes("자비스 모드")) {
+    setAI("JARVIS");
+    input.value = "";
+    return;
+  }
+
+  if (command.includes("울트론 모드")) {
+    setAI("ULTRON");
+    input.value = "";
+    return;
+  }
+
+  if (command.includes("프라이데이 모드")) {
+    setAI("FRIDAY");
+    input.value = "";
+    return;
+  }
+
+  const answer = respond(message);
+
+  document.getElementById("answer").textContent = answer;
+  input.value = "";
+}
+
+// 음성 파일 선택 화면 만들기
+function createVoiceSettings() {
+  const area = document.getElementById("voiceSettings");
+
+  Object.keys(voices).forEach(ai => {
+    const section = document.createElement("div");
+    section.className = "voice-row";
+
+    const heading = document.createElement("h4");
+    heading.textContent = names[ai];
+    section.appendChild(heading);
+
+    Object.keys(voiceLabels).forEach(type => {
+      const label = document.createElement("label");
+      label.textContent = voiceLabels[type];
+
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = "audio/*";
+
+      fileInput.addEventListener("change", event => {
+        const file = event.target.files[0];
+
+        if (!file) return;
+
+        if (voices[ai][type]) {
+          URL.revokeObjectURL(voices[ai][type]);
+        }
+
+        voices[ai][type] = URL.createObjectURL(file);
+
+        document.getElementById("status").textContent =
+          names[ai] + " 음성 등록 완료";
+      });
+
+      section.appendChild(label);
+      section.appendChild(fileInput);
+    });
+
+    area.appendChild(section);
+  });
+}
+
+createVoiceSettings();
+
+// Enter 키로 명령 전송
+document.getElementById("userInput")
+  .addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      sendMessage();
+    }
+  });
+
+</script>
+</body>
+</html>
