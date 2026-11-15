@@ -285,7 +285,62 @@ function respond(message) {
   return "Understood. Tell me more.";
 }
 
+function speak(text) {
+  if (!("speechSynthesis" in window)) {
+    isAIResponding = false;
+    document.getElementById("status").textContent =
+      "VOICE OUTPUT UNAVAILABLE";
 
+    if (continuousMode) {
+      setTimeout(listenOnce, 500);
+    }
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+
+  const voices = window.speechSynthesis.getVoices();
+
+  if (currentAI === "JARVIS") {
+    utterance.lang = "en-GB";
+    utterance.rate = 0.92;
+    utterance.pitch = 0.85;
+
+    utterance.voice =
+      voices.find(v => v.lang === "en-GB") || null;
+
+  } else if (currentAI === "ULTRON") {
+    utterance.lang = "en-US";
+    utterance.rate = 0.88;
+    utterance.pitch = 0.75;
+
+    utterance.voice =
+      voices.find(v => v.lang === "en-US") || null;
+  }
+
+  utterance.onend = function() {
+    isAIResponding = false;
+
+    if (continuousMode) {
+      setTimeout(listenOnce, 500);
+    } else {
+      document.getElementById("status").textContent =
+        "SYSTEM ONLINE";
+    }
+  };
+
+  utterance.onerror = function() {
+    isAIResponding = false;
+
+    if (continuousMode) {
+      setTimeout(listenOnce, 500);
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
 async function sendMessage() {
   const input = document.getElementById("userInput");
   const message = input.value.trim();
