@@ -285,7 +285,8 @@ function respond(message) {
   return "Understood. Tell me more.";
 }
 
-function sendMessage() {
+
+async function sendMessage() {
   const input = document.getElementById("userInput");
   const message = input.value.trim();
 
@@ -312,11 +313,52 @@ function sendMessage() {
     return;
   }
 
-  const answer = respond(message);
-
-  document.getElementById("answer").textContent = answer;
   input.value = "";
+
+  const answerBox = document.getElementById("answer");
+  const status = document.getElementById("status");
+
+  answerBox.textContent = "생각 중...";
+  status.textContent = "AI THINKING...";
+
+  try {
+    const response = await fetch(
+      "https://personal-ai-server.junhyeong012.workers.dev/",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: message,
+          persona: currentAI
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error?.message || data.error || "AI 연결 실패"
+      );
+    }
+
+    const answer = data.choices[0].message.content;
+
+    answerBox.textContent = answer;
+    status.textContent = "SYSTEM ONLINE";
+
+    if (typeof speak === "function") {
+      speak(answer);
+    }
+
+  } catch (error) {
+    answerBox.textContent = "AI 연결 오류: " + error.message;
+    status.textContent = "CONNECTION ERROR";
+  }
 }
+
 
 // 음성 파일 선택 화면 만들기
 function createVoiceSettings() {
