@@ -336,23 +336,40 @@ console.log("Available voices:", window.speechSynthesis.getVoices().length);
 
   const voices = window.speechSynthesis.getVoices();
 
-  if (currentAI === "JARVIS") {
-    utterance.lang = "en-GB";
-    utterance.rate = 0.92;
-    utterance.pitch = 0.85;
+ if (currentAI === "JARVIS") {
+  utterance.lang = "en-GB";
+  utterance.rate = 0.92;
+  utterance.pitch = 0.85;
 
-    utterance.voice =
-      voices.find(v => v.lang === "en-GB") || null;
+  utterance.voice =
+    voices.find(v => v.lang === "en-GB") || null;
 
-  } else if (currentAI === "ULTRON") {
-    utterance.lang = "en-US";
-    utterance.rate = 0.88;
-    utterance.pitch = 0.75;
+} else if (currentAI === "ULTRON") {
+  utterance.lang = "en-US";
+  utterance.rate = 0.88;
+  utterance.pitch = 0.75;
 
-    utterance.voice =
-      voices.find(v => v.lang === "en-US") || null;
-  }
+  utterance.voice =
+    voices.find(v =>
+      v.lang === "en-US" &&
+      /male/i.test(v.name)
+    ) ||
+    voices.find(v => v.lang === "en-US") ||
+    null;
 
+} else if (currentAI === "FRIDAY") {
+  utterance.lang = "en-US";
+  utterance.rate = 1.0;
+  utterance.pitch = 1.15;
+
+  utterance.voice =
+    voices.find(v =>
+      v.lang === "en-US" &&
+      /female/i.test(v.name)
+    ) ||
+    voices.find(v => v.lang === "en-US") ||
+    null;
+}
   utterance.onend = function() {
     isAIResponding = false;
 
