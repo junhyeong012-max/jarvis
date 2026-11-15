@@ -137,6 +137,9 @@ input[type="text"] {
 <button class="send" onclick="startListening()">
   🎙️ TALK TO AI
 </button>
+<button class="send" onclick="testVoice()">
+  🔊 TEST VOICE
+</button>
 </div>
 
 <div class="panel">
@@ -284,7 +287,33 @@ function respond(message) {
 
   return "Understood. Tell me more.";
 }
+function testVoice() {
+  const test = new SpeechSynthesisUtterance(
+    "Hello. This is a voice test."
+  );
 
+  test.lang = "en-US";
+  test.rate = 1;
+  test.pitch = 1;
+
+  test.onstart = function() {
+    document.getElementById("status").textContent =
+      "TEST VOICE PLAYING";
+  };
+
+  test.onend = function() {
+    document.getElementById("status").textContent =
+      "TEST COMPLETED";
+  };
+
+  test.onerror = function(event) {
+    document.getElementById("status").textContent =
+      "VOICE ERROR: " + event.error;
+  };
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(test);
+}
 function speak(text) {
   
 console.log("Speech synthesis:", "speechSynthesis" in window);
