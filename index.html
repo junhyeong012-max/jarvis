@@ -339,7 +339,8 @@ function speak(text) {
     }
   };
 
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis.speak(utterance); 
+  console.log("TTS TEST:", utterance.lang);
 }
 async function sendMessage() {
   const input = document.getElementById("userInput");
