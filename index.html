@@ -668,6 +668,7 @@ function startListening() {
 }
 
 
+
 // Listen once, then continue after the AI response
 function listenOnce() {
   if (!continuousMode || isAIResponding) return;
@@ -690,6 +691,7 @@ function listenOnce() {
   recognition.interimResults = false;
 
   let receivedResult = false;
+  let ended = false;
 
   document.getElementById("status").textContent =
     "LISTENING...";
@@ -708,33 +710,52 @@ function listenOnce() {
   };
 
   recognition.onerror = function(event) {
+    console.error(
+      "Microphone error:",
+      event.error
+    );
+
+    document.getElementById("status").textContent =
+      "MIC ERROR: " + event.error;
+
     if (
       event.error === "not-allowed" ||
+      event.error === "service-not-allowed" ||
       event.error === "audio-capture"
     ) {
       continuousMode = false;
-
-      document.getElementById("status").textContent =
-        "MICROPHONE ERROR";
     }
   };
 
   recognition.onend = function() {
+    ended = true;
+
     if (
       continuousMode &&
       !isAIResponding &&
       !receivedResult
     ) {
-      setTimeout(listenOnce, 500);
+      setTimeout(() => {
+        if (continuousMode && !isAIResponding) {
+          listenOnce();
+        }
+      }, 1200);
     }
   };
 
   try {
     recognition.start();
   } catch (error) {
-    console.error("Recognition start error:", error);
+    console.error(
+      "Recognition start error:",
+      error
+    );
+
+    document.getElementById("status").textContent =
+      "START ERROR: " + error.message;
   }
 }
+
 
 </script>
 </body>
