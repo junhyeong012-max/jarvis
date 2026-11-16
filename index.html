@@ -7,7 +7,9 @@
 <title>PERSONAL AI SYSTEM</title>
 
 <style>
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -32,6 +34,7 @@ h1 {
   text-align: center;
   color: #55d8ff;
   margin: 20px 0;
+  min-height: 18px;
 }
 
 .modes {
@@ -48,9 +51,17 @@ button {
   color: white;
   font-weight: bold;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-button:active { background: #17618b; }
+button:active {
+  background: #17618b;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .panel {
   margin-top: 20px;
@@ -74,6 +85,21 @@ input[type="text"] {
 .send {
   width: 100%;
   margin-top: 10px;
+}
+
+#talkButton {
+  min-height: 58px;
+  font-size: 16px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#talkButton.holding {
+  background: #17618b;
+  border-color: #55d8ff;
+  box-shadow: 0 0 18px #2386bd;
+  transform: scale(0.98);
 }
 
 #answer {
@@ -112,7 +138,10 @@ input[type="text"] {
 <div class="container">
 
 <h1>PERSONAL AI</h1>
-<div class="status" id="status">SYSTEM ONLINE</div>
+
+<div class="status" id="status">
+SYSTEM ONLINE
+</div>
 
 <div class="modes">
   <button onclick="setAI('JARVIS')">J.A.R.V.I.S.</button>
@@ -121,8 +150,12 @@ input[type="text"] {
 </div>
 
 <div class="panel">
+
   <h3 id="aiName">J.A.R.V.I.S.</h3>
-  <div id="answer">Good evening. How may I assist you?</div>
+
+  <div id="answer">
+    Good evening. How may I assist you?
+  </div>
 
   <input
     type="text"
@@ -130,34 +163,61 @@ input[type="text"] {
     placeholder="명령을 입력하세요..."
   >
 
-  <button class="send" onclick="startListening()">
-    🎙️ TALK TO AI
+  <button
+    class="send"
+    id="talkButton"
+    type="button"
+  >
+    🎙️ HOLD TO TALK
   </button>
 
-  <button class="send" onclick="testVoice()">
+  <button
+    class="send"
+    type="button"
+    onclick="testVoice()"
+  >
     🔊 TEST VOICE
   </button>
+
 </div>
 
 <div class="panel">
+
   <h3>VOICE CONFIGURATION</h3>
+
   <p class="small">
     기기에 저장된 음성 파일을 선택하세요.
     각 AI마다 시작 음성, 인사, 확인 음성을 등록할 수 있습니다.
   </p>
+
   <div id="voiceSettings"></div>
+
 </div>
 
 </div>
 
 <script>
+
+
+// ========================================
+// SYSTEM VARIABLES
+// ========================================
+
 let currentAI = "JARVIS";
+
 let currentAudio = null;
 let currentAudioUrl = null;
+let activeSource = null;
 
-let continuousMode = false;
 let recognition = null;
+
+let isHoldingTalk = false;
 let isAIResponding = false;
+let recognitionHadError = false;
+
+let finalTranscript = "";
+
+let audioContext = null;
 
 const WORKER_URL =
   "https://personal-ai-server.junhyeong012.workers.dev/";
@@ -168,11 +228,13 @@ const voices = {
     greeting: null,
     confirmation: null
   },
+
   ULTRON: {
     startup: null,
     greeting: null,
     confirmation: null
   },
+
   FRIDAY: {
     startup: null,
     greeting: null,
@@ -193,10 +255,74 @@ const voiceLabels = {
 };
 
 
-// Stop currently playing audio and browser speech
+// ========================================
+// STATUS
+// ========================================
+
+function setStatus(message) {
+  document.getElementById("status").textContent =
+    message;
+}
+
+function updateTalkButton() {
+  const button =
+    document.getElementById("talkButton");
+
+  if (isHoldingTalk) {
+    button.textContent = "🔴 LISTENING...";
+    button.classList.add("holding");
+  } else {
+    button.textContent = "🎙️ HOLD TO TALK";
+    button.classList.remove("holding");
+  }
+}
+
+
+// ========================================
+// AUDIO CONTEXT
+// ========================================
+
+function prepareAudio() {
+  const AudioContextClass =
+    window.AudioContext ||
+    window.webkitAudioContext;
+
+  if (!AudioContextClass) return;
+
+  try {
+    if (!audioContext) {
+      audioContext = new AudioContextClass();
+    }
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(error => {
+        console.warn("Audio context:", error);
+      });
+    }
+
+  } catch (error) {
+    console.error("Audio initialization:", error);
+  }
+}
+
+
+// ========================================
+// STOP PLAYBACK
+// ========================================
+
 function stopPlayback() {
+
   if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();
+  }
+
+  if (activeSource) {
+    try {
+      activeSource.onended = null;
+      activeSource.stop();
+    } catch (error) {}
+
+    activeSource = null;
   }
 
   if (currentAudio) {
@@ -212,17 +338,48 @@ function stopPlayback() {
 }
 
 
-// Change AI mode
+// ========================================
+// STOP RECOGNITION
+// ========================================
+
+function cancelRecognition() {
+
+  isHoldingTalk = false;
+  recognitionHadError = true;
+
+  updateTalkButton();
+
+  if (recognition) {
+    const oldRecognition = recognition;
+    recognition = null;
+
+    try {
+      oldRecognition.abort();
+    } catch (error) {}
+  }
+}
+
+
+// ========================================
+// CHANGE AI
+// ========================================
+
 function setAI(ai) {
+
   if (!names[ai]) return;
 
+  cancelRecognition();
+
+  isAIResponding = false;
+
   currentAI = ai;
+
   stopPlayback();
 
-  document.getElementById("aiName").textContent = names[ai];
+  document.getElementById("aiName").textContent =
+    names[ai];
 
-  document.getElementById("status").textContent =
-    names[ai] + " SYSTEM ONLINE";
+  setStatus(names[ai] + " SYSTEM ONLINE");
 
   const messages = {
     JARVIS: "Good evening. How may I assist you?",
@@ -237,8 +394,12 @@ function setAI(ai) {
 }
 
 
-// Play uploaded startup / greeting / confirmation audio
+// ========================================
+// UPLOADED VOICE
+// ========================================
+
 function playVoice(type) {
+
   const file = voices[currentAI][type];
 
   if (!file) return;
@@ -249,20 +410,23 @@ function playVoice(type) {
 
   currentAudio.onended = function() {
     currentAudio = null;
-    document.getElementById("status").textContent =
-      names[currentAI] + " SYSTEM ONLINE";
+
+    setStatus(names[currentAI] + " SYSTEM ONLINE");
   };
 
   currentAudio.play().catch(error => {
-    document.getElementById("status").textContent =
-      "AUDIO PLAYBACK ERROR";
     console.error(error);
+    setStatus("AUDIO PLAYBACK ERROR");
   });
 }
 
 
-// Existing simple response function
+// ========================================
+// SIMPLE RESPONSE FUNCTION
+// ========================================
+
 function respond(message) {
+
   const text = message.toLowerCase().trim();
 
   if (
@@ -270,6 +434,7 @@ function respond(message) {
     text.includes("hello") ||
     text.includes("hi")
   ) {
+
     playVoice("greeting");
 
     if (currentAI === "JARVIS")
@@ -286,6 +451,7 @@ function respond(message) {
     text.includes("감사") ||
     text.includes("thank")
   ) {
+
     playVoice("confirmation");
 
     if (currentAI === "JARVIS")
@@ -302,6 +468,7 @@ function respond(message) {
     text.includes("실행") ||
     text.includes("yes")
   ) {
+
     playVoice("confirmation");
 
     if (currentAI === "JARVIS")
@@ -323,11 +490,14 @@ function respond(message) {
 }
 
 
-// Browser speech test
+// ========================================
+// TEST VOICE
+// ========================================
+
 function testVoice() {
+
   if (!("speechSynthesis" in window)) {
-    document.getElementById("status").textContent =
-      "VOICE OUTPUT UNAVAILABLE";
+    setStatus("VOICE OUTPUT UNAVAILABLE");
     return;
   }
 
@@ -342,167 +512,220 @@ function testVoice() {
   test.pitch = 1;
 
   test.onstart = function() {
-    document.getElementById("status").textContent =
-      "TEST VOICE PLAYING";
+    setStatus("TEST VOICE PLAYING");
   };
 
   test.onend = function() {
-    document.getElementById("status").textContent =
-      "TEST COMPLETED";
+    setStatus("TEST COMPLETED");
   };
 
   test.onerror = function(event) {
-    document.getElementById("status").textContent =
-      "VOICE ERROR: " + event.error;
+    setStatus("VOICE ERROR: " + event.error);
   };
 
   window.speechSynthesis.speak(test);
 }
 
 
-// Play generated AI voice
-function speak(text, audioBase64, persona = currentAI) {
-  stopPlayback();
+// ========================================
+// FISH AUDIO PLAYBACK
+// ========================================
 
-  // ULTRON: Fish Audio MP3
-  if (persona === "ULTRON" && audioBase64) {
-    try {
-      const binary = atob(audioBase64);
-      const bytes = new Uint8Array(binary.length);
+async function playFishAudio(audioBase64, text) {
 
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
+  try {
 
-      const blob = new Blob(
-        [bytes],
-        { type: "audio/mpeg" }
+    prepareAudio();
+
+    if (!audioContext) {
+      throw new Error("AudioContext unavailable");
+    }
+
+    const binary = atob(audioBase64);
+
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    const audioBuffer =
+      await audioContext.decodeAudioData(
+        bytes.buffer.slice(0)
       );
 
-      currentAudioUrl = URL.createObjectURL(blob);
-      currentAudio = new Audio(currentAudioUrl);
+    if (currentAI !== "ULTRON") return;
 
-      document.getElementById("status").textContent =
-        "ULTRON VOICE PLAYING";
+    await audioContext.resume();
 
-      currentAudio.onended = function() {
-        stopPlayback();
-        finishSpeaking();
-      };
+    const source = audioContext.createBufferSource();
 
-      currentAudio.onerror = function() {
-        stopPlayback();
-        document.getElementById("status").textContent =
-          "ULTRON AUDIO ERROR";
-        finishSpeaking();
-      };
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
 
-      currentAudio.play().catch(error => {
-        console.error("Fish Audio playback error:", error);
-        stopPlayback();
-        browserSpeak(text, persona);
-      });
+    activeSource = source;
 
-      return;
+    setStatus("ULTRON VOICE PLAYING");
 
-    } catch (error) {
-      console.error("Fish Audio decoding error:", error);
+    source.onended = function() {
+
+      if (activeSource !== source) return;
+
+      activeSource = null;
+
+      finishSpeaking();
+    };
+
+    source.start(0);
+
+  } catch (error) {
+
+    console.error("Fish Audio playback:", error);
+
+    if (currentAI === "ULTRON") {
+      browserSpeak(text, "ULTRON");
+    } else {
+      finishSpeaking();
     }
   }
+}
 
-  // Fallback: browser speech
+
+// ========================================
+// SPEAK
+// ========================================
+
+function speak(text, audioBase64, persona = currentAI) {
+
+  stopPlayback();
+
+  if (persona === "ULTRON" && audioBase64) {
+
+    playFishAudio(audioBase64, text);
+
+    return;
+  }
+
   if (persona === "ULTRON") {
-    document.getElementById("status").textContent =
-      "ULTRON VOICE FALLBACK";
+    setStatus("ULTRON VOICE FALLBACK");
   }
 
   browserSpeak(text, persona);
 }
 
 
-// Browser speech synthesis for JARVIS / FRIDAY / fallback
+// ========================================
+// BROWSER SPEECH
+// ========================================
+
 function browserSpeak(text, persona) {
+
   if (!("speechSynthesis" in window)) {
+
+    setStatus("VOICE OUTPUT UNAVAILABLE");
+
     finishSpeaking();
-    document.getElementById("status").textContent =
-      "VOICE OUTPUT UNAVAILABLE";
+
     return;
   }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  const availableVoices = window.speechSynthesis.getVoices();
+  const utterance =
+    new SpeechSynthesisUtterance(text);
+
+  const availableVoices =
+    window.speechSynthesis.getVoices();
 
   if (persona === "JARVIS") {
+
     utterance.lang = "en-GB";
     utterance.rate = 0.92;
     utterance.pitch = 0.85;
 
     utterance.voice =
-      availableVoices.find(v => v.lang === "en-GB") || null;
+      availableVoices.find(v =>
+        v.lang === "en-GB"
+      ) || null;
 
   } else if (persona === "ULTRON") {
+
     utterance.lang = "en-US";
     utterance.rate = 0.88;
     utterance.pitch = 0.75;
 
     utterance.voice =
       availableVoices.find(v =>
-        v.lang === "en-US" && /male/i.test(v.name)
+        v.lang === "en-US" &&
+        /male/i.test(v.name)
       ) ||
-      availableVoices.find(v => v.lang === "en-US") ||
+      availableVoices.find(v =>
+        v.lang === "en-US"
+      ) ||
       null;
 
   } else {
+
     utterance.lang = "en-US";
     utterance.rate = 1.0;
     utterance.pitch = 1.15;
 
     utterance.voice =
       availableVoices.find(v =>
-        v.lang === "en-US" && /female/i.test(v.name)
+        v.lang === "en-US" &&
+        /female/i.test(v.name)
       ) ||
-      availableVoices.find(v => v.lang === "en-US") ||
+      availableVoices.find(v =>
+        v.lang === "en-US"
+      ) ||
       null;
   }
 
+  utterance.onstart = function() {
+    setStatus(names[persona] + " SPEAKING...");
+  };
+
   utterance.onend = finishSpeaking;
-  utterance.onerror = finishSpeaking;
+
+  utterance.onerror = function(event) {
+    console.error("Speech error:", event.error);
+    finishSpeaking();
+  };
 
   window.speechSynthesis.speak(utterance);
 }
 
 
-// Called when speech playback finishes
+// ========================================
+// FINISH SPEAKING
+// ========================================
+
 function finishSpeaking() {
+
   isAIResponding = false;
 
-  if (continuousMode) {
-    setTimeout(listenOnce, 500);
-  } else {
-    document.getElementById("status").textContent =
-      names[currentAI] + " SYSTEM ONLINE";
-  }
+  setStatus(names[currentAI] + " STANDBY");
 }
 
 
-// Send message to Cloudflare Worker
+// ========================================
+// SEND MESSAGE
+// ========================================
+
 async function sendMessage() {
-  const input = document.getElementById("userInput");
+
+  if (isAIResponding) return;
+
+  const input =
+    document.getElementById("userInput");
+
   const message = input.value.trim();
 
   if (!message) {
-    isAIResponding = false;
-
-    if (continuousMode) {
-      setTimeout(listenOnce, 500);
-    }
-
+    setStatus(names[currentAI] + " STANDBY");
     return;
   }
 
   const command = message.toLowerCase();
 
-  // Voice mode switching commands
   if (command.includes("자비스 모드")) {
     input.value = "";
     setAI("JARVIS");
@@ -524,20 +747,25 @@ async function sendMessage() {
   input.value = "";
 
   const requestPersona = currentAI;
-  const answerBox = document.getElementById("answer");
-  const status = document.getElementById("status");
+
+  const answerBox =
+    document.getElementById("answer");
 
   isAIResponding = true;
 
   answerBox.textContent = "THINKING...";
-  status.textContent = names[requestPersona] + " THINKING...";
+
+  setStatus(names[requestPersona] + " THINKING...");
 
   try {
+
     const response = await fetch(WORKER_URL, {
       method: "POST",
+
       headers: {
         "Content-Type": "application/json"
       },
+
       body: JSON.stringify({
         message: message,
         persona: requestPersona
@@ -559,7 +787,6 @@ async function sendMessage() {
       throw new Error("AI returned an empty response.");
     }
 
-    // Ignore an old response if the user changed AI mode
     if (currentAI !== requestPersona) {
       isAIResponding = false;
       return;
@@ -569,47 +796,67 @@ async function sendMessage() {
 
     if (requestPersona === "ULTRON" && data.ttsError) {
       console.warn("Fish Audio:", data.ttsError);
-      status.textContent = "FISH AUDIO UNAVAILABLE - FALLBACK";
+      setStatus("FISH AUDIO FALLBACK");
     }
 
-    speak(answer, data.audioBase64 || null, requestPersona);
+    speak(
+      answer,
+      data.audioBase64 || null,
+      requestPersona
+    );
 
   } catch (error) {
-    answerBox.textContent = "AI ERROR: " + error.message;
-    status.textContent = "CONNECTION ERROR";
-
-    isAIResponding = false;
-
-    if (continuousMode) {
-      setTimeout(listenOnce, 1000);
-    }
 
     console.error(error);
+
+    answerBox.textContent =
+      "AI ERROR: " + error.message;
+
+    setStatus("CONNECTION ERROR");
+
+    isAIResponding = false;
   }
 }
 
 
-// Create voice file upload settings
+// ========================================
+// CREATE VOICE SETTINGS
+// ========================================
+
 function createVoiceSettings() {
-  const area = document.getElementById("voiceSettings");
+
+  const area =
+    document.getElementById("voiceSettings");
 
   Object.keys(voices).forEach(ai => {
-    const section = document.createElement("div");
+
+    const section =
+      document.createElement("div");
+
     section.className = "voice-row";
 
-    const heading = document.createElement("h4");
+    const heading =
+      document.createElement("h4");
+
     heading.textContent = names[ai];
+
     section.appendChild(heading);
 
     Object.keys(voiceLabels).forEach(type => {
-      const label = document.createElement("label");
+
+      const label =
+        document.createElement("label");
+
       label.textContent = voiceLabels[type];
 
-      const fileInput = document.createElement("input");
+      const fileInput =
+        document.createElement("input");
+
       fileInput.type = "file";
       fileInput.accept = "audio/*";
 
       fileInput.addEventListener("change", event => {
+
         const file = event.target.files[0];
 
         if (!file) return;
@@ -618,144 +865,288 @@ function createVoiceSettings() {
           URL.revokeObjectURL(voices[ai][type]);
         }
 
-        voices[ai][type] = URL.createObjectURL(file);
+        voices[ai][type] =
+          URL.createObjectURL(file);
 
-        document.getElementById("status").textContent =
-          names[ai] + " 음성 등록 완료";
+        setStatus(names[ai] + " 음성 등록 완료");
       });
 
       section.appendChild(label);
       section.appendChild(fileInput);
+
     });
 
     area.appendChild(section);
+
   });
 }
 
 createVoiceSettings();
 
 
-// Enter key sends a text command
-document.getElementById("userInput")
-  .addEventListener("keydown", event => {
-    if (event.key === "Enter") {
-      sendMessage();
-    }
-  });
+// ========================================
+// PUSH TO TALK
+// ========================================
 
+function startListening(event) {
 
-// Start / stop continuous voice recognition
-function startListening() {
-  if (continuousMode) {
-    continuousMode = false;
-
-    if (recognition) {
-      recognition.abort();
-      recognition = null;
-    }
-
-    stopPlayback();
-    isAIResponding = false;
-
-    document.getElementById("status").textContent =
-      names[currentAI] + " SYSTEM ONLINE";
-
-    return;
+  if (event) {
+    event.preventDefault();
   }
 
-  continuousMode = true;
-  listenOnce();
-}
-
-
-
-// Listen once, then continue after the AI response
-function listenOnce() {
-  if (!continuousMode || isAIResponding) return;
+  if (isHoldingTalk || isAIResponding) return;
 
   const SpeechRecognition =
     window.SpeechRecognition ||
     window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    document.getElementById("status").textContent =
-      "SPEECH RECOGNITION UNAVAILABLE";
-    continuousMode = false;
+
+    setStatus("SPEECH RECOGNITION UNAVAILABLE");
+
     return;
   }
 
-  recognition = new SpeechRecognition();
+  // Prepare audio while user gesture is active
+  prepareAudio();
 
-  recognition.lang = "en-US";
-  recognition.continuous = false;
-  recognition.interimResults = false;
+  finalTranscript = "";
+  recognitionHadError = false;
+  isHoldingTalk = true;
 
-  let receivedResult = false;
-  let ended = false;
+  updateTalkButton();
 
-  document.getElementById("status").textContent =
-    "LISTENING...";
+  const instance = new SpeechRecognition();
 
-  recognition.onresult = function(event) {
-    receivedResult = true;
+  recognition = instance;
 
-    const message =
-      event.results[0][0].transcript;
+  instance.lang = "en-US";
+  instance.continuous = true;
+  instance.interimResults = true;
 
-    document.getElementById("userInput").value =
-      message;
+  setStatus("LISTENING...");
 
-    isAIResponding = true;
-    sendMessage();
+  instance.onstart = function() {
+
+    if (!isHoldingTalk) {
+      try {
+        instance.stop();
+      } catch (error) {}
+    }
   };
 
-  recognition.onerror = function(event) {
+  instance.onresult = function(event) {
+
+    for (
+      let i = event.resultIndex;
+      i < event.results.length;
+      i++
+    ) {
+
+      const result = event.results[i];
+
+      if (result.isFinal) {
+
+        const text = result[0].transcript.trim();
+
+        if (text) {
+          finalTranscript += text + " ";
+        }
+      }
+    }
+  };
+
+  instance.onerror = function(event) {
+
+    recognitionHadError = true;
+
     console.error(
       "Microphone error:",
       event.error
     );
 
-    document.getElementById("status").textContent =
-      "MIC ERROR: " + event.error;
+    isHoldingTalk = false;
 
-    if (
-      event.error === "not-allowed" ||
-      event.error === "service-not-allowed" ||
-      event.error === "audio-capture"
-    ) {
-      continuousMode = false;
-    }
+    updateTalkButton();
+
+    setStatus("MIC ERROR: " + event.error);
   };
 
-  recognition.onend = function() {
-    ended = true;
+  instance.onend = function() {
 
-    if (
-      continuousMode &&
-      !isAIResponding &&
-      !receivedResult
-    ) {
-      setTimeout(() => {
-        if (continuousMode && !isAIResponding) {
-          listenOnce();
-        }
-      }, 1200);
+    if (recognition !== instance) return;
+
+    recognition = null;
+
+    isHoldingTalk = false;
+
+    updateTalkButton();
+
+    if (recognitionHadError) {
+      return;
     }
+
+    const message = finalTranscript.trim();
+
+    if (!message) {
+
+      setStatus("NO SPEECH DETECTED");
+
+      return;
+    }
+
+    document.getElementById("userInput").value =
+      message;
+
+    sendMessage();
   };
 
   try {
-    recognition.start();
-  } catch (error) {
-    console.error(
-      "Recognition start error:",
-      error
-    );
 
-    document.getElementById("status").textContent =
-      "START ERROR: " + error.message;
+    instance.start();
+
+  } catch (error) {
+
+    console.error("Recognition start:", error);
+
+    recognition = null;
+
+    isHoldingTalk = false;
+
+    updateTalkButton();
+
+    setStatus("MIC START ERROR: " + error.message);
   }
 }
 
+
+// ========================================
+// RELEASE BUTTON
+// ========================================
+
+function stopListening() {
+
+  if (!isHoldingTalk) return;
+
+  isHoldingTalk = false;
+
+  updateTalkButton();
+
+  if (recognition) {
+
+    try {
+
+      recognition.stop();
+
+      setStatus("PROCESSING VOICE...");
+
+    } catch (error) {
+
+      console.error("Recognition stop:", error);
+
+      setStatus("MIC STOP ERROR");
+    }
+  }
+}
+
+
+// ========================================
+// BUTTON EVENTS
+// ========================================
+
+const talkButton =
+  document.getElementById("talkButton");
+
+talkButton.addEventListener(
+  "pointerdown",
+  event => {
+
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      talkButton.setPointerCapture(event.pointerId);
+    } catch (error) {}
+
+    startListening(event);
+  }
+);
+
+talkButton.addEventListener(
+  "pointerup",
+  event => {
+    event.preventDefault();
+    stopListening();
+  }
+);
+
+talkButton.addEventListener(
+  "pointercancel",
+  stopListening
+);
+
+talkButton.addEventListener(
+  "lostpointercapture",
+  stopListening
+);
+
+
+// ========================================
+// KEYBOARD SUPPORT
+// ========================================
+
+talkButton.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.code === "Space" ||
+      event.code === "Enter"
+    ) {
+
+      event.preventDefault();
+
+      if (!event.repeat) {
+        startListening(event);
+      }
+    }
+  }
+);
+
+talkButton.addEventListener(
+  "keyup",
+  event => {
+
+    if (
+      event.code === "Space" ||
+      event.code === "Enter"
+    ) {
+
+      event.preventDefault();
+
+      stopListening();
+    }
+  }
+);
+
+
+// ========================================
+// TEXT INPUT
+// ========================================
+
+document.getElementById("userInput")
+  .addEventListener("keydown", event => {
+
+    if (event.key === "Enter") {
+
+      event.preventDefault();
+
+      sendMessage();
+    }
+  });
 
 </script>
 </body>
